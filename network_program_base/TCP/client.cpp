@@ -57,8 +57,8 @@ int main(int argc, char **argv)
         {
             break;
         }
-        total_size += size;
 
+        total_size += size;
         if (total_size > 60 * 1024 * 1024)
         {
             time_t t2 = time(NULL);
