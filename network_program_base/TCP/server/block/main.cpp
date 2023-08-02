@@ -63,7 +63,7 @@ int main()
             size = ::send(client_fd, buf, sizeof(buf), 0);
             if (size < 0)
             {
-                LOG_INFO("Send error: client_fd=%d, error code=%d", client_fd, WSAGetLastError());
+                LOG_ERROR("Send error: client_fd=%d, error code=%d", client_fd, WSAGetLastError());
                 break;
             }
 
