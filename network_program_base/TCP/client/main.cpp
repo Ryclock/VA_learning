@@ -5,8 +5,8 @@
 #include <time.h>
 
 #pragma comment(lib, "ws2_32.lib")
-#define LOG_INFO(format, ...) fprintf(stdout, "\n[INFO] [%s:%d]:%s() " format "", __FILE__, __LINE__, __func__, ##__VA_ARGS__)
-#define LOG_ERROR(format, ...) fprintf(stderr, "\n[INERROR] [%s:%d]:%s() " format "", __FILE__, __LINE__, __func__, ##__VA_ARGS__)
+#define LOG_INFO(format, ...) fprintf(stdout, "\n[INFO] [%s:%d]:%s() " format, __FILE__, __LINE__, __func__, ##__VA_ARGS__)
+#define LOG_ERROR(format, ...) fprintf(stderr, "\n[INERROR] [%s:%d]:%s() " format, __FILE__, __LINE__, __func__, ##__VA_ARGS__)
 
 int main(int argc, char **argv)
 {
@@ -65,7 +65,7 @@ int main(int argc, char **argv)
             if (t2 - t1 > 0)
             {
                 uint64_t speed = total_size / (t2 - t1) / 1024 / 1024;
-                LOG_INFO("fd=%d, size=%d, total_size=%d, speed=%lluMbps\n", fd, size, total_size, speed);
+                LOG_INFO("fd=%d, size=%d, total_size=%d, speed=%lluMbps", fd, size, total_size, speed);
                 total_size = 0;
                 t1 = time(NULL);
             }
