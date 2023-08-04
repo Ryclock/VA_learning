@@ -7,11 +7,6 @@ namespace base64
         "abcdefghijklmnopqrstuvwxyz"
         "0123456789+/";
 
-    static inline bool is_base64(unsigned char c)
-    {
-        return (isalnum(c) || (c == '+') || (c == '/'));
-    }
-
     void encode_data_block(int len, int start_pos, const unsigned char *data, unsigned char *char_array_3)
     {
         for (int j = 0; j < len; j++)
@@ -56,7 +51,7 @@ namespace base64
         }
     }
 
-    static void encode(unsigned char *data, int size, std::string &encoded_str)
+    void encode(unsigned char *data, int size, std::string &encoded_str)
     {
         unsigned char char_array_3[3], char_array_4[4];
         int size_left = size;
@@ -113,7 +108,7 @@ namespace base64
         }
     }
 
-    static void decode(std::string &data, std::string &decoded_str)
+    void decode(std::string &data, std::string &decoded_str)
     {
         uint8_t char_array_4[4], char_array_3[3];
         int len = data.size();

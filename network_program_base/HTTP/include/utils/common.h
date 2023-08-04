@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 
-static int64_t get_current_time();
-static int64_t get_current_timestamp();
-static std::vector<std::string> split(const std::string &str, const std::string &sep);
-static bool remove_file(const std::string &file_name);
-static void mkdirs(const std::string &dir);
+int64_t get_current_time();
+int64_t get_current_timestamp();
+std::vector<std::string> split(const std::string &str, const std::string &sep);
+bool remove_file(const std::string &file_name);
+void mkdirs(const std::string &dir);
 
 #endif // _COMMON_H

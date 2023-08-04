@@ -2,7 +2,7 @@
 #include <time.h>
 #include <cstdarg>
 
-static std::string log_time()
+std::string log_time()
 {
     const char *time_fmt = "%Y-%m-%d %H:%M:%S";
     time_t t = time(nullptr);

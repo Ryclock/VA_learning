@@ -5,13 +5,13 @@
 
 namespace base64
 {
-    static inline bool is_base64(unsigned char c)
+    inline bool is_base64(unsigned char c)
     {
         return (isalnum(c) || (c == '+') || (c == '/'));
     }
 
-    static void encode(unsigned char *, int, std::string &);
-    static void decode(std::string &, std::string &);
+    void encode(unsigned char *, int, std::string &);
+    void decode(std::string &, std::string &);
 }
 
 #endif // _BASE64_H

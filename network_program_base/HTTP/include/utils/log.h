@@ -3,7 +3,7 @@
 
 #include <string>
 
-static std::string log_time();
+std::string log_time();
 void log_info(const char *, ...);
 void log_error(const char *, ...);
 
