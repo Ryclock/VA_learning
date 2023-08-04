@@ -1,6 +1,6 @@
-#include "./common.h"
 #include <chrono>
 #include <io.h>
+#include "utils/common.h"
 
 static int64_t get_current_time()
 {
