@@ -18,7 +18,6 @@ void test_upload_image()
     param["code"] = "s84dsd#7hf34r3jsk@fs$d#$dd";
     param["image"] = image_base64;
     std::string data = param.toStyledString();
-    param = NULL;
 
     std::string url = "http://127.0.0.1:8080/api/upload_image";
     std::string response;
