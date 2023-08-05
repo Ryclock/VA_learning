@@ -76,7 +76,7 @@ namespace request
         struct curl_slist *headers = nullptr;
         headers = curl_slist_append(headers, "User-Agent: HTTP Client;");
         headers = curl_slist_append(headers, "Content-Type:application/json;");
-        headers = curl_slist_append(headers, "expect: ;");
+        // headers = curl_slist_append(headers, "expect: ;");
 
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_HEADER, 0);

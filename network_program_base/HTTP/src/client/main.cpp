@@ -7,9 +7,9 @@
 
 void test_upload_image()
 {
-    cv::Mat image = cv::imread("test.jpg");
+    cv::Mat image = cv::imread("D:/tmp/test.jpg");
     std::string image_base64;
-    std::vector<int> quality = {100};
+    std::vector<int> quality = {cv::IMWRITE_JPEG_QUALITY, 100};
     std::vector<uchar> jpeg_data;
     cv::imencode(".jpg", image, jpeg_data, quality);
     base64::encode(jpeg_data.data(), jpeg_data.size(), image_base64);
