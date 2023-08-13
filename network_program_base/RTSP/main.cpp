@@ -15,10 +15,84 @@
 // #pragma warning(disable : 4996)
 
 #define H264_FILE_NAME "./data/test.h264"
+#define AAC_FILE_NAME "./data/test.aac"
 #define SERVER_PORT 8554
 #define SERVER_RTP_PORT 55532
 #define SERVER_RTCP_PORT 55533
 #define BUF_MAX_SIZE (1024 * 1024)
+
+struct ADTS_Header
+{
+    unsigned int syncword;
+    uint8_t id;
+    uint8_t layer;
+    uint8_t protection_absent;
+    uint8_t profile;
+    uint8_t sampling_frequent_index;
+    uint8_t private_bit;
+    uint8_t channel_cfg;
+    uint8_t original_copy;
+    uint8_t home;
+    uint8_t copy_right_identification_bit;
+    uint8_t copy_right_identification_start;
+    unsigned int aac_frame_len;
+    unsigned int adts_buf_fullness;
+    uint8_t num_of_raw_data_block_in_frame;
+};
+
+int parse_ADTS_header(uint8_t *in, struct ADTS_Header *res)
+{
+    int frame_num = 0;
+    memset(res, 0, sizeof(*res));
+
+    if ((in[0] != 0xFF) || ((in[1] & 0xF0) != 0xF0))
+    {
+        printf("\nFail to parse ADTS header");
+        return -1;
+    }
+
+    res->id = ((uint8_t)in[1] & 0x08) >> 3;
+    res->layer = ((uint8_t)in[1] & 0x06) >> 1;
+    res->protection_absent = ((uint8_t)in[1] & 0x01);
+    res->profile = ((uint8_t)in[2] & 0xc0) >> 6;
+    res->sampling_frequent_index = ((uint8_t)in[2] & 0x3c) >> 2;
+    res->private_bit = ((uint8_t)in[2] & 0x02) >> 1;
+    res->channel_cfg = (((uint8_t)in[2] & 0x01) << 2) |
+                       (((unsigned int)in[3] & 0xc0) >> 6);
+    res->original_copy = ((uint8_t)in[3] & 0x20) >> 5;
+    res->home = ((uint8_t)in[3] & 0x10) >> 4;
+    res->copy_right_identification_bit = ((uint8_t)in[3] & 0x08) >> 3;
+    res->copy_right_identification_start = ((uint8_t)in[3] & 0x04) >> 2;
+    res->aac_frame_len = (((unsigned int)in[3] & 0x03) << 11) |
+                         (((unsigned int)in[4] & 0xFF) << 3) |
+                         (((unsigned int)in[5] & 0xE0) >> 5);
+    res->adts_buf_fullness = (((unsigned int)in[5] & 0x1f) << 6) |
+                             (((unsigned int)in[6] & 0xfc) >> 2);
+    res->num_of_raw_data_block_in_frame = ((uint8_t)in[6] & 0x03);
+    return 0;
+}
+
+int rtp_send_aac_frame(int socket, const char *ip, int16_t port,
+                       struct RTP_Packet *rp, uint8_t *frame, uint32_t frame_size)
+{
+    rp->payload[0] = 0x00;
+    rp->payload[1] = 0x10;
+    rp->payload[2] = (frame_size & 0x1FE0) >> 5;
+    rp->payload[3] = (frame_size & 0x1F) << 3;
+    memcpy(rp->payload + 4, frame, frame_size);
+
+    int ret = RTP_send_packet_over_UDP(socket, ip, port, rp, frame_size + 4);
+    if (ret < 0)
+    {
+        printf("\nFail to send rtp packet");
+        return -1;
+    }
+
+    uint32_t delta = 1025; // 44100/1024=43(fps), 44100/43=1025
+    rp->rh.seq++;
+    rp->rh.timestamp += delta;
+    return 0;
+}
 
 inline int start_code3(char *buf)
 {
@@ -81,7 +155,7 @@ int get_frame_from_h264_file(FILE *fp, char *frame, int size)
     return frame_size;
 }
 
-int RTP_send_h264_frame(int server_RTP_sock_fd, const char *ip, int16_t port, struct RTP_Packet *rp, char *frame, uint32_t frame_size)
+int rtp_send_h264_frame(int server_rtp_sock_fd, const char *ip, int16_t port, struct RTP_Packet *rp, char *frame, uint32_t frame_size)
 {
     uint8_t NALU_type;
     int send_bytes = 0;
@@ -92,7 +166,7 @@ int RTP_send_h264_frame(int server_RTP_sock_fd, const char *ip, int16_t port, st
     if (frame_size <= RTP_MAX_PKT_SIZE)
     {
         memcpy(rp->payload, frame, frame_size);
-        ret = RTP_send_packet_over_UDP(server_RTP_sock_fd, ip, port, rp, frame_size);
+        ret = RTP_send_packet_over_UDP(server_rtp_sock_fd, ip, port, rp, frame_size);
         if (ret < 0)
         {
             return -1;
@@ -125,7 +199,7 @@ int RTP_send_h264_frame(int server_RTP_sock_fd, const char *ip, int16_t port, st
             }
 
             memcpy(rp->payload + 2, frame + pos, RTP_MAX_PKT_SIZE);
-            ret = RTP_send_packet_over_UDP(server_RTP_sock_fd, ip, port, rp, RTP_MAX_PKT_SIZE);
+            ret = RTP_send_packet_over_UDP(server_rtp_sock_fd, ip, port, rp, RTP_MAX_PKT_SIZE);
             if (ret < 0)
             {
                 return -1;
@@ -142,7 +216,7 @@ int RTP_send_h264_frame(int server_RTP_sock_fd, const char *ip, int16_t port, st
             rp->payload[1] = NALU_type | 0x40;
 
             memcpy(rp->payload + 2, frame + pos, remain_pkt_size + 2);
-            ret = RTP_send_packet_over_UDP(server_RTP_sock_fd, ip, port, rp, RTP_MAX_PKT_SIZE);
+            ret = RTP_send_packet_over_UDP(server_rtp_sock_fd, ip, port, rp, RTP_MAX_PKT_SIZE);
             if (ret < 0)
             {
                 return -1;
@@ -175,8 +249,9 @@ int handle_cmd_DESCRIBE(char *result, int CSeq, char *url)
                  "o=- 9%ld 1 IN IP4 %s\r\n"
                  "t=0 0\r\n"
                  "a=control:*\r\n"
-                 "m=video 0 RTP/AVP 96\r\n"
-                 "a=rtpmap:96 H264/90000\r\n"
+                 "m=audio 0 RTP/AVP 97\r\n"
+                 "a=rtpmap:97 mpeg4-generic/44100/2\r\n"
+                 "a=fmtp:97 profile-level-id=1;mode=AAC-hbr;sizelength=13;indexlength=3;indexdeltalength=3;config=1210;\r\n"
                  "a=control:track0\r\n",
             time(NULL), local_ip);
 
@@ -184,20 +259,20 @@ int handle_cmd_DESCRIBE(char *result, int CSeq, char *url)
                     "CSeq: %d\r\n"
                     "Content-Base: %s\r\n"
                     "Content-type: application/sdp\r\n"
-                    "Content-length: %zu\r\n\r\n"
+                    "Content-length: %d\r\n\r\n"
                     "%s",
             CSeq, url, strlen(sdp), sdp);
     return 0;
 }
 
-static int handle_cmd_SETUP(char *result, int CSeq, int clientRtpPort)
+static int handle_cmd_SETUP(char *result, int CSeq, int clientrtpPort)
 {
     sprintf(result, "RTSP/1.0 200 OK\r\n"
                     "CSeq: %d\r\n"
                     "Transport: RTP/AVP;unicast;client_port=%d-%d;server_port=%d-%d\r\n"
                     "Session: 66334873\r\n"
                     "\r\n",
-            CSeq, clientRtpPort, clientRtpPort + 1, SERVER_RTP_PORT, SERVER_RTCP_PORT);
+            CSeq, clientrtpPort, clientrtpPort + 1, SERVER_RTP_PORT, SERVER_RTCP_PORT);
     return 0;
 }
 
@@ -227,7 +302,7 @@ int create_tcp_socket()
 int create_udp_socket()
 {
     int sock_fd, on = 1;
-    sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock_fd < 0)
     {
         return -1;
@@ -267,13 +342,13 @@ int accept_client(int sock_fd, char *ip, int *port)
 void do_client(int client_sock_fd, const char *client_ip, int client_port)
 {
     char method[40], url[100], version[40];
-    int CSeq, client_RTP_port, client_RTCP_port, server_RTP_sock_fd = -1, server_RTCP_sock_fd = -1;
-    char *r_buf = (char *)malloc(10000);
-    char *s_buf = (char *)malloc(10000);
+    int CSeq, client_rtp_port, client_rtcp_port, server_rtp_sock_fd = -1, server_rtcp_sock_fd = -1;
+    char *r_buf = (char *)malloc(BUF_MAX_SIZE);
+    char *s_buf = (char *)malloc(BUF_MAX_SIZE);
 
     while (true)
     {
-        int recv_len = recv(client_sock_fd, r_buf, 2000, 0);
+        int recv_len = recv(client_sock_fd, r_buf, BUF_MAX_SIZE, 0);
         if (recv_len <= 0)
         {
             break;
@@ -302,7 +377,7 @@ void do_client(int client_sock_fd, const char *client_ip, int client_port)
             }
             else if (!strncmp(line, "Transport:", strlen("Transport:")) &&
                      sscanf(line, "Transport: RTP/AVP/UDP;unicast;client_port=%d-%d",
-                            &client_RTP_port, &client_RTCP_port) != 2)
+                            &client_rtp_port, &client_rtcp_port) != 2)
             {
                 // error
                 printf("\nParse transport error");
@@ -314,7 +389,7 @@ void do_client(int client_sock_fd, const char *client_ip, int client_port)
         {
             if (handle_cmd_OPTIONS(s_buf, CSeq))
             {
-                printf("\nFailed to handle options");
+                printf("\nFail to handle options");
                 break;
             }
         }
@@ -322,29 +397,29 @@ void do_client(int client_sock_fd, const char *client_ip, int client_port)
         {
             if (handle_cmd_DESCRIBE(s_buf, CSeq, url))
             {
-                printf("\nFailed to handle describe");
+                printf("\nFail to handle describe");
                 break;
             }
         }
         else if (!strcmp(method, "SETUP"))
         {
-            if (handle_cmd_SETUP(s_buf, CSeq, client_RTP_port))
+            if (handle_cmd_SETUP(s_buf, CSeq, client_rtp_port))
             {
-                printf("\nFailed to handle setup");
+                printf("\nFail to handle setup");
                 break;
             }
 
-            server_RTP_sock_fd = create_udp_socket();
-            server_RTCP_sock_fd = create_udp_socket();
-            if (server_RTP_sock_fd < 0 || server_RTCP_sock_fd < 0)
+            server_rtp_sock_fd = create_udp_socket();
+            server_rtcp_sock_fd = create_udp_socket();
+            if (server_rtp_sock_fd < 0 || server_rtcp_sock_fd < 0)
             {
-                printf("\nFailed to create UDP socket");
+                printf("\nFail to create UDP socket");
                 break;
             }
-            if (bind_socket_addr(server_RTP_sock_fd, "0.0.0.0", SERVER_RTP_PORT) < 0 ||
-                bind_socket_addr(server_RTCP_sock_fd, "0.0.0.0", SERVER_RTCP_PORT) < 0)
+            if (bind_socket_addr(server_rtp_sock_fd, "0.0.0.0", SERVER_RTP_PORT) < 0 ||
+                bind_socket_addr(server_rtcp_sock_fd, "0.0.0.0", SERVER_RTCP_PORT) < 0)
             {
-                printf("\nFailed to bind addr");
+                printf("\nFail to bind addr");
                 break;
             }
         }
@@ -352,7 +427,7 @@ void do_client(int client_sock_fd, const char *client_ip, int client_port)
         {
             if (handle_cmd_PLAY(s_buf, CSeq))
             {
-                printf("\nFailed to handle play");
+                printf("\nFail to handle play");
                 break;
             }
         }
@@ -367,41 +442,47 @@ void do_client(int client_sock_fd, const char *client_ip, int client_port)
         send(client_sock_fd, s_buf, strlen(s_buf), 0);
         if (!strcmp(method, "PLAY"))
         {
-            int frame_size, start_code;
-            char *frame = (char *)malloc(500000);
-            struct RTP_Packet *rp = (struct RTP_Packet *)malloc(500000);
-            FILE *fp = fopen(H264_FILE_NAME, "rb");
+            int ret;
+            uint8_t *frame = (uint8_t *)malloc(5000);
+            struct RTP_Packet *rp = (struct RTP_Packet *)malloc(5000);
+            struct ADTS_Header ah;
+            FILE *fp = fopen(AAC_FILE_NAME, "rb");
             if (!fp)
             {
-                printf("\nFail to read %s", H264_FILE_NAME);
+                printf("\nFail to read %s", AAC_FILE_NAME);
                 break;
             }
 
-            RTP_header_init(rp, 0, 0, 0, RTP_VERSION, RTP_PAYLOAD_TYPE_H264, 0, 0, 0, 0x88923423);
-            printf("\nstart play\nclient ip:%s\nclient port:%d", client_ip, client_RTP_port);
+            RTP_header_init(rp, 0, 0, 0, RTP_VERSION, RTP_PAYLOAD_TYPE_AAC, 1, 0, 0, 0x32411);
+            printf("\nstart play\nclient ip:%s\nclient port:%d", client_ip, client_rtp_port);
             while (true)
             {
-                frame_size = get_frame_from_h264_file(fp, frame, 500000);
-                if (frame_size < 0)
+                ret = fread(frame, 1, 7, fp);
+                if (ret <= 0)
                 {
-                    printf("\nRead %s break, frame_size=%d", H264_FILE_NAME, frame_size);
+                    printf("\nFread error");
+                    break;
+                }
+                printf("\nFread ret=%d", ret);
+
+                ret = parse_ADTS_header(frame, &ah);
+                if (ret < 0)
+                {
+                    printf("\nParse ADTS header error");
                     break;
                 }
 
-                if (start_code3(frame))
+                ret = fread(frame, 1, ah.aac_frame_len - 7, fp);
+                if (ret <= 0)
                 {
-                    start_code = 3;
-                }
-                else
-                {
-                    start_code = 4;
+                    printf("\nFread error");
+                    break;
                 }
 
-                frame_size -= start_code;
-                RTP_send_h264_frame(server_RTP_sock_fd, client_ip, client_RTP_port, rp, frame + start_code, frame_size);
+                rtp_send_aac_frame(server_rtp_sock_fd, client_ip, client_rtp_port, rp, frame, ah.aac_frame_len - 7);
 
-                Sleep(40);
-                // usleep(40000); // 1000/25 * 1000
+                Sleep(1);
+                // usleep(23223);//1000/43.06 * 1000
             }
 
             free(frame);
@@ -415,13 +496,13 @@ void do_client(int client_sock_fd, const char *client_ip, int client_port)
     }
 
     closesocket(client_sock_fd);
-    if (server_RTP_sock_fd)
+    if (server_rtp_sock_fd)
     {
-        closesocket(server_RTP_sock_fd);
+        closesocket(server_rtp_sock_fd);
     }
-    if (server_RTCP_sock_fd)
+    if (server_rtcp_sock_fd > 0)
     {
-        closesocket(server_RTCP_sock_fd);
+        closesocket(server_rtcp_sock_fd);
     }
 
     free(r_buf);
@@ -441,31 +522,30 @@ int main(int argc, char *argv[])
     if (server_sock_fd < 0)
     {
         WSACleanup();
-        printf("\nFailed to create tcp socket");
+        printf("\nFail to create tcp socket");
         return -1;
     }
 
-    int bind_res = bind_socket_addr(server_sock_fd, "0.0.0.0", SERVER_PORT);
-    if (bind_res < 0)
+    int res = bind_socket_addr(server_sock_fd, "0.0.0.0", SERVER_PORT);
+    if (res < 0)
     {
-        printf("\nFailed to bind addr");
+        printf("\nFail to bind addr");
         return -1;
     }
 
-    int listen_res = listen(server_sock_fd, 10);
-    if (listen_res < 0)
+    res = listen(server_sock_fd, 10);
+    if (res < 0)
     {
-        printf("\nFailed to listen");
+        printf("\nFail to listen");
         return -1;
     }
 
     printf("\n%s rtsp://127.0.0.1:%d", __FILE__, SERVER_PORT);
     while (true)
     {
-        int client_sock_fd, client_port;
         char client_ip[40];
-
-        client_sock_fd = accept_client(server_sock_fd, client_ip, &client_port);
+        int client_port;
+        int client_sock_fd = accept_client(server_sock_fd, client_ip, &client_port);
         if (client_sock_fd < 0)
         {
             printf("\nFail to accept client");
