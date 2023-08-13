@@ -125,7 +125,7 @@ int RTP_send_h264_frame(int server_RTP_sock_fd, const char *ip, int16_t port, st
             }
 
             memcpy(rp->payload + 2, frame + pos, RTP_MAX_PKT_SIZE);
-            ret = RTP_send_packet_over_UDP(server_RTP_sock_fd, ip, port, rp, RTP_MAX_PKT_SIZE);
+            ret = RTP_send_packet_over_UDP(server_RTP_sock_fd, ip, port, rp, RTP_MAX_PKT_SIZE + 2);
             if (ret < 0)
             {
                 return -1;
@@ -142,7 +142,7 @@ int RTP_send_h264_frame(int server_RTP_sock_fd, const char *ip, int16_t port, st
             rp->payload[1] = NALU_type | 0x40;
 
             memcpy(rp->payload + 2, frame + pos, remain_pkt_size + 2);
-            ret = RTP_send_packet_over_UDP(server_RTP_sock_fd, ip, port, rp, RTP_MAX_PKT_SIZE);
+            ret = RTP_send_packet_over_UDP(server_RTP_sock_fd, ip, port, rp, remain_pkt_size + 2);
             if (ret < 0)
             {
                 return -1;
@@ -227,7 +227,7 @@ int create_tcp_socket()
 int create_udp_socket()
 {
     int sock_fd, on = 1;
-    sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock_fd < 0)
     {
         return -1;
@@ -268,12 +268,12 @@ void do_client(int client_sock_fd, const char *client_ip, int client_port)
 {
     char method[40], url[100], version[40];
     int CSeq, client_RTP_port, client_RTCP_port, server_RTP_sock_fd = -1, server_RTCP_sock_fd = -1;
-    char *r_buf = (char *)malloc(10000);
-    char *s_buf = (char *)malloc(10000);
+    char *r_buf = (char *)malloc(BUF_MAX_SIZE);
+    char *s_buf = (char *)malloc(BUF_MAX_SIZE);
 
     while (true)
     {
-        int recv_len = recv(client_sock_fd, r_buf, 2000, 0);
+        int recv_len = recv(client_sock_fd, r_buf, BUF_MAX_SIZE, 0);
         if (recv_len <= 0)
         {
             break;
@@ -419,7 +419,7 @@ void do_client(int client_sock_fd, const char *client_ip, int client_port)
     {
         closesocket(server_RTP_sock_fd);
     }
-    if (server_RTCP_sock_fd)
+    if (server_RTCP_sock_fd > 0)
     {
         closesocket(server_RTCP_sock_fd);
     }

@@ -18,6 +18,7 @@ void RTP_header_init(struct RTP_Packet *rp, uint8_t csrc_len, uint8_t extension,
     rp->rh.timestamp = timestamp;
     rp->rh.ssrc = ssrc;
 }
+
 int RTP_send_packet_over_TCP(int client_sock_fd, struct RTP_Packet *rp, uint32_t data_size)
 {
     rp->rh.seq = htons(rp->rh.seq);
@@ -41,6 +42,7 @@ int RTP_send_packet_over_TCP(int client_sock_fd, struct RTP_Packet *rp, uint32_t
     tmp_buf = NULL;
     return ret;
 }
+
 int RTP_send_packet_over_UDP(int server_RTP_sock_fd, const char *ip, int16_t port, struct RTP_Packet *rp, uint32_t data_size)
 {
     struct sockaddr_in addr;
