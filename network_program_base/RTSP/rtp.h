@@ -29,5 +29,5 @@ struct RTP_Packet
 };
 
 void RTP_header_init(struct RTP_Packet *, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint16_t, uint32_t, uint32_t);
-int RTP_send_packet_over_TCP(int, struct RTP_Packet *, uint32_t);
+int RTP_send_packet_over_TCP(int, struct RTP_Packet *, uint32_t, char);
 int RTP_send_packet_over_UDP(int, const char *, int16_t, struct RTP_Packet *, uint32_t);

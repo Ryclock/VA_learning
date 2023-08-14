@@ -10,6 +10,7 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 #include "rtp.h"
+#include <thread>
 
 // #pragma comment(lib, "ws2_32.lib")
 // #pragma warning(disable : 4996)
@@ -72,7 +73,7 @@ int parse_ADTS_header(uint8_t *in, struct ADTS_Header *res)
     return 0;
 }
 
-int rtp_send_aac_frame(int socket, const char *ip, int16_t port,
+int rtp_send_aac_frame(int client_sock_fd,
                        struct RTP_Packet *rp, uint8_t *frame, uint32_t frame_size)
 {
     rp->payload[0] = 0x00;
@@ -81,7 +82,7 @@ int rtp_send_aac_frame(int socket, const char *ip, int16_t port,
     rp->payload[3] = (frame_size & 0x1F) << 3;
     memcpy(rp->payload + 4, frame, frame_size);
 
-    int ret = RTP_send_packet_over_UDP(socket, ip, port, rp, frame_size + 4);
+    int ret = RTP_send_packet_over_TCP(client_sock_fd, rp, frame_size + 4, 0x02);
     if (ret < 0)
     {
         printf("\nFail to send rtp packet");
@@ -155,7 +156,8 @@ int get_frame_from_h264_file(FILE *fp, char *frame, int size)
     return frame_size;
 }
 
-int rtp_send_h264_frame(int server_rtp_sock_fd, const char *ip, int16_t port, struct RTP_Packet *rp, char *frame, uint32_t frame_size)
+int rtp_send_h264_frame(int client_sock_fd,
+                        struct RTP_Packet *rp, char *frame, uint32_t frame_size)
 {
     uint8_t NALU_type;
     int send_bytes = 0;
@@ -166,7 +168,7 @@ int rtp_send_h264_frame(int server_rtp_sock_fd, const char *ip, int16_t port, st
     if (frame_size <= RTP_MAX_PKT_SIZE)
     {
         memcpy(rp->payload, frame, frame_size);
-        ret = RTP_send_packet_over_UDP(server_rtp_sock_fd, ip, port, rp, frame_size);
+        ret = RTP_send_packet_over_TCP(client_sock_fd, rp, frame_size, 0x00);
         if (ret < 0)
         {
             return -1;
@@ -199,7 +201,7 @@ int rtp_send_h264_frame(int server_rtp_sock_fd, const char *ip, int16_t port, st
             }
 
             memcpy(rp->payload + 2, frame + pos, RTP_MAX_PKT_SIZE);
-            ret = RTP_send_packet_over_UDP(server_rtp_sock_fd, ip, port, rp, RTP_MAX_PKT_SIZE + 2);
+            ret = RTP_send_packet_over_TCP(client_sock_fd, rp, RTP_MAX_PKT_SIZE + 2, 0x00);
             if (ret < 0)
             {
                 return -1;
@@ -216,7 +218,7 @@ int rtp_send_h264_frame(int server_rtp_sock_fd, const char *ip, int16_t port, st
             rp->payload[1] = NALU_type | 0x40;
 
             memcpy(rp->payload + 2, frame + pos, remain_pkt_size + 2);
-            ret = RTP_send_packet_over_UDP(server_rtp_sock_fd, ip, port, rp, remain_pkt_size + 2);
+            ret = RTP_send_packet_over_TCP(client_sock_fd, rp, remain_pkt_size + 2, 0x00);
             if (ret < 0)
             {
                 return -1;
@@ -249,30 +251,45 @@ int handle_cmd_DESCRIBE(char *result, int CSeq, char *url)
                  "o=- 9%ld 1 IN IP4 %s\r\n"
                  "t=0 0\r\n"
                  "a=control:*\r\n"
-                 "m=audio 0 RTP/AVP 97\r\n"
+                 "m=video 0 RTP/AVP/TCP 96\r\n"
+                 "a=rtpmap:96 H264/90000\r\n"
+                 "a=control:track0\r\n"
+                 "m=audio 1 RTP/AVP 97\r\n"
                  "a=rtpmap:97 mpeg4-generic/44100/2\r\n"
                  "a=fmtp:97 profile-level-id=1;mode=AAC-hbr;sizelength=13;indexlength=3;indexdeltalength=3;config=1210;\r\n"
-                 "a=control:track0\r\n",
+                 "a=control:track1\r\n",
             time(NULL), local_ip);
 
     sprintf(result, "RTSP/1.0 200 OK\r\n"
                     "CSeq: %d\r\n"
                     "Content-Base: %s\r\n"
                     "Content-type: application/sdp\r\n"
-                    "Content-length: %d\r\n\r\n"
+                    "Content-length: %zu\r\n\r\n"
                     "%s",
             CSeq, url, strlen(sdp), sdp);
     return 0;
 }
 
-static int handle_cmd_SETUP(char *result, int CSeq, int clientrtpPort)
+static int handle_cmd_SETUP(char *result, int CSeq)
 {
-    sprintf(result, "RTSP/1.0 200 OK\r\n"
-                    "CSeq: %d\r\n"
-                    "Transport: RTP/AVP;unicast;client_port=%d-%d;server_port=%d-%d\r\n"
-                    "Session: 66334873\r\n"
-                    "\r\n",
-            CSeq, clientrtpPort, clientrtpPort + 1, SERVER_RTP_PORT, SERVER_RTCP_PORT);
+    if (CSeq == 3)
+    {
+        sprintf(result, "RTSP/1.0 200 OK\r\n"
+                        "CSeq: %d\r\n"
+                        "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n"
+                        "Session: 66334873\r\n"
+                        "\r\n",
+                CSeq);
+    }
+    else if (CSeq == 4)
+    {
+        sprintf(result, "RTSP/1.0 200 OK\r\n"
+                        "CSeq: %d\r\n"
+                        "Transport: RTP/AVP/TCP;unicast;interleaved=2-3\r\n"
+                        "Session: 66334873\r\n"
+                        "\r\n",
+                CSeq);
+    }
     return 0;
 }
 
@@ -376,8 +393,7 @@ void do_client(int client_sock_fd, const char *client_ip, int client_port)
                 // error
             }
             else if (!strncmp(line, "Transport:", strlen("Transport:")) &&
-                     sscanf(line, "Transport: RTP/AVP/UDP;unicast;client_port=%d-%d",
-                            &client_rtp_port, &client_rtcp_port) != 2)
+                     sscanf(line, "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n") != 0)
             {
                 // error
                 printf("\nParse transport error");
@@ -403,23 +419,9 @@ void do_client(int client_sock_fd, const char *client_ip, int client_port)
         }
         else if (!strcmp(method, "SETUP"))
         {
-            if (handle_cmd_SETUP(s_buf, CSeq, client_rtp_port))
+            if (handle_cmd_SETUP(s_buf, CSeq))
             {
                 printf("\nFail to handle setup");
-                break;
-            }
-
-            server_rtp_sock_fd = create_udp_socket();
-            server_rtcp_sock_fd = create_udp_socket();
-            if (server_rtp_sock_fd < 0 || server_rtcp_sock_fd < 0)
-            {
-                printf("\nFail to create UDP socket");
-                break;
-            }
-            if (bind_socket_addr(server_rtp_sock_fd, "0.0.0.0", SERVER_RTP_PORT) < 0 ||
-                bind_socket_addr(server_rtcp_sock_fd, "0.0.0.0", SERVER_RTCP_PORT) < 0)
-            {
-                printf("\nFail to bind addr");
                 break;
             }
         }
@@ -442,51 +444,98 @@ void do_client(int client_sock_fd, const char *client_ip, int client_port)
         send(client_sock_fd, s_buf, strlen(s_buf), 0);
         if (!strcmp(method, "PLAY"))
         {
-            int ret;
-            uint8_t *frame = (uint8_t *)malloc(5000);
-            struct RTP_Packet *rp = (struct RTP_Packet *)malloc(5000);
-            struct ADTS_Header ah;
-            FILE *fp = fopen(AAC_FILE_NAME, "rb");
-            if (!fp)
-            {
-                printf("\nFail to read %s", AAC_FILE_NAME);
-                break;
-            }
-
-            RTP_header_init(rp, 0, 0, 0, RTP_VERSION, RTP_PAYLOAD_TYPE_AAC, 1, 0, 0, 0x32411);
-            printf("\nstart play\nclient ip:%s\nclient port:%d", client_ip, client_rtp_port);
-            while (true)
-            {
-                ret = fread(frame, 1, 7, fp);
-                if (ret <= 0)
+            std::thread t1([&]()
+                           {                
+                FILE *fp = fopen(H264_FILE_NAME, "rb");
+                if (!fp)
                 {
-                    printf("\nFread error");
-                    break;
-                }
-                printf("\nFread ret=%d", ret);
-
-                ret = parse_ADTS_header(frame, &ah);
-                if (ret < 0)
-                {
-                    printf("\nParse ADTS header error");
-                    break;
+                    printf("\nFail to read %s", AAC_FILE_NAME);
+                    return;
                 }
 
-                ret = fread(frame, 1, ah.aac_frame_len - 7, fp);
-                if (ret <= 0)
+                int frame_size, start_code;
+                char *frame = (char *)malloc(500000);
+                struct RTP_Packet *rp = (struct RTP_Packet *)malloc(500000);
+                RTP_header_init(rp, 0, 0, 0, RTP_VERSION, RTP_PAYLOAD_TYPE_H264, 0, 0, 0, 0x88923423);
+                printf("\nstart play");
+
+                while (true)
                 {
-                    printf("\nFread error");
-                    break;
+                    frame_size = get_frame_from_h264_file(fp, frame, 500000);
+                    if (frame_size < 0)
+                    {
+                        printf("\nRead %s break, frame_size=%d", H264_FILE_NAME, frame_size);
+                        break;
+                    }
+
+                    if (start_code3(frame))
+                    {
+                        start_code = 3;
+                    }
+                    else
+                    {
+                        start_code = 4;
+                    }
+                    frame_size -= start_code;
+                    rtp_send_h264_frame(client_sock_fd, rp, frame + start_code, frame_size);
+                    rp->rh.timestamp += 90000 / 25;
+
+                    Sleep(20);
+                    // usleep(40000);//1000/25 * 1000
                 }
 
-                rtp_send_aac_frame(server_rtp_sock_fd, client_ip, client_rtp_port, rp, frame, ah.aac_frame_len - 7);
+                free(frame);
+                free(rp); });
+            std::thread t2([&]()
+                           {
+                FILE *fp = fopen(AAC_FILE_NAME, "rb");
+                if (!fp)
+                {
+                    printf("\nFail to read %s", AAC_FILE_NAME);
+                    return;
+                }
 
-                Sleep(1);
-                // usleep(23223);//1000/43.06 * 1000
-            }
+                int ret;
+                uint8_t *frame = (uint8_t *)malloc(5000);
+                struct RTP_Packet *rp = (struct RTP_Packet *)malloc(5000);
+                struct ADTS_Header ah;
+                RTP_header_init(rp, 0, 0, 0, RTP_VERSION, RTP_PAYLOAD_TYPE_AAC, 1, 0, 0, 0x32411);
+                printf("\nstart play");
 
-            free(frame);
-            free(rp);
+                while (true)
+                {
+                    ret = fread(frame, 1, 7, fp);
+                    if (ret <= 0)
+                    {
+                        printf("\nFread error");
+                        break;
+                    }
+                    printf("\nFread ret=%d", ret);
+
+                    ret = parse_ADTS_header(frame, &ah);
+                    if (ret < 0)
+                    {
+                        printf("\nParse ADTS header error");
+                        break;
+                    }
+
+                    ret = fread(frame, 1, ah.aac_frame_len - 7, fp);
+                    if (ret <= 0)
+                    {
+                        printf("\nFread error");
+                        break;
+                    }
+
+                    rtp_send_aac_frame(client_sock_fd, rp, frame, ah.aac_frame_len - 7);
+
+                    Sleep(23);
+                    // usleep(23223);//1000/43.06 * 1000
+                }
+
+                free(frame);
+                free(rp); });
+            t1.join();
+            t2.join();
             break;
         }
 
@@ -496,15 +545,6 @@ void do_client(int client_sock_fd, const char *client_ip, int client_port)
     }
 
     closesocket(client_sock_fd);
-    if (server_rtp_sock_fd)
-    {
-        closesocket(server_rtp_sock_fd);
-    }
-    if (server_rtcp_sock_fd > 0)
-    {
-        closesocket(server_rtcp_sock_fd);
-    }
-
     free(r_buf);
     free(s_buf);
 }

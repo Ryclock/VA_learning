@@ -19,7 +19,7 @@ void RTP_header_init(struct RTP_Packet *rp, uint8_t csrc_len, uint8_t extension,
     rp->rh.ssrc = ssrc;
 }
 
-int RTP_send_packet_over_TCP(int client_sock_fd, struct RTP_Packet *rp, uint32_t data_size)
+int RTP_send_packet_over_TCP(int client_sock_fd, struct RTP_Packet *rp, uint32_t data_size, char channel)
 {
     rp->rh.seq = htons(rp->rh.seq);
     rp->rh.timestamp = htonl(rp->rh.timestamp);
@@ -28,7 +28,7 @@ int RTP_send_packet_over_TCP(int client_sock_fd, struct RTP_Packet *rp, uint32_t
     uint32_t RTP_size = RTP_HEADER_SIZE + data_size;
     char *tmp_buf = (char *)malloc(4 + RTP_size);
     tmp_buf[0] = 0x24;
-    tmp_buf[1] = 0x00;
+    tmp_buf[1] = channel;
     tmp_buf[2] = (uint8_t)((RTP_size & 0xFF00) >> 8);
     tmp_buf[3] = (uint8_t)(RTP_size & 0xFF);
     memcpy(tmp_buf + 4, (char *)rp, RTP_size);
